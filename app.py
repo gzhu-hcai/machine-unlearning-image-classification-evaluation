@@ -464,4 +464,3 @@ if len(st.session_state.history) > 0:
     if st.button("🧹 清空历史对比数据"):
         st.session_state.history = []
         st.rerun()
-##dsddssd
