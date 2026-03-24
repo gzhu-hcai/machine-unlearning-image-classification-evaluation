@@ -1,0 +1,4 @@
+[server]
+# 把心跳包发送间隔改为 30 秒，超时等待时间拉长到 300 秒（5分钟）
+websocketPingInterval = 30
+websocketPingTimeout = 300

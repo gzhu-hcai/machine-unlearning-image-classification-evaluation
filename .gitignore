@@ -1,0 +1,4 @@
+.venu/
+.idea/
+**/__pycache__/
+*.pyc
