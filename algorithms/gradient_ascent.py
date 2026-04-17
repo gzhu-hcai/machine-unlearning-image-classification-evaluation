@@ -42,6 +42,7 @@ class GradientAscent(BaseUnlearner):
         )
 
     def unlearn(
+            # 1. 挂载标准优化器与交叉熵损失函数
         self,
         model: Module,
         retain_loader: DataLoader,
@@ -56,6 +57,7 @@ class GradientAscent(BaseUnlearner):
         ) = get_optimizer_scheduler_criterion(model, self.cfg)
         criterion = torch.nn.CrossEntropyLoss()
         model.to(device)
+        # 2. 隔离数据流，仅对遗忘集 (forget_loader) 执行逆向优化
         for epoch in range(self.cfg.num_epochs):
             model = GA(model, forget_loader, criterion, optimizer, device)
         return model
@@ -106,9 +108,12 @@ def GA(
         target = target.to(device)
         optimizer.zero_grad()
 
+        # 前向计算输出特征
         output_clean = model(image)
+        # 核心巧思：损失函数加负号，欺骗标准优化器反向执行梯度上升
         loss = -criterion(output_clean, target)
 
+        # 触发反向传播，由于 Loss 为负，回传的梯度向量方向全部翻转
         loss.backward()
         optimizer.step()
 

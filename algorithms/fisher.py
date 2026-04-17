@@ -141,7 +141,7 @@ def hessian(dataset, model, loss_fn, batch_size: int, device):
         dataset, batch_size=batch_size, shuffle=False
     )
 
-    # 💡 优化 1：用与参数形状相同的全 0 张量代替普通的数字 0。
+    #  优化 1：用与参数形状相同的全 0 张量代替普通的数字 0。
     # 这样就算某个参数全程没有梯度，它也是一个形状正确的张量，后续计算绝不会报错。
     for p in model.parameters():
         p.grad_acc = torch.zeros_like(p.data)
@@ -158,7 +158,7 @@ def hessian(dataset, model, loss_fn, batch_size: int, device):
             model.zero_grad()
             loss.backward(retain_graph=True)
             for p in model.parameters():
-                # 🛡️ 优化 2 (核心修复)：加上 p.grad is not None 的双重保险！
+                # 🛡优化 2 (核心修复)：加上 p.grad is not None 的双重保险！
                 if p.requires_grad and p.grad is not None:
                     p.grad2_acc += torch.mean(prob[:, y]) * p.grad.data.pow(2)
 

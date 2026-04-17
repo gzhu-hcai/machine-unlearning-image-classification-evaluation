@@ -35,22 +35,22 @@ from algorithms.successive_random_labels import SuccessiveRandomLabels
 # 1. UI 初始化、基础功能定义与全局种子固化
 # ---------------------------------------------------------
 st.set_page_config(page_title="机器遗忘评测系统", layout="wide")
-st.title("🧠 机器遗忘算法图形化评测系统")
+st.title("机器遗忘算法图形化评测系统")
 
 # === 初始化历史记录记忆体 ===
 if 'history' not in st.session_state:
     st.session_state.history = []
 
 # === 数据集与评测指标详细说明 ===
-with st.expander("ℹ️ 数据集与评测指标详细说明 (点击展开)", expanded=False):
+with st.expander("数据集与评测指标详细说明 (点击展开)", expanded=False):
     st.markdown("""
-    ### 📦 数据集说明
+    ###数据集说明
     * **来源**: CIFAR-10 / CIFAR-100 官方数据集
     * **类型**: 10 或 100 分类彩色图像 (32x32 分辨率)
     * **规模**: 包含 50,000 张训练集图片和 10,000 张测试集图片
     * **预处理**: 图像已进行 Normalize 标准化处理。系统会根据左侧设定的 `Forget Ratio` 动态将原训练集划分为**保留集 (Retain Set)**和**遗忘集 (Forget Set)**。
 
-    ### 📊 测试指标说明
+    ###测试指标说明
     * **Retain Acc (保留集准确率)**: 评估算法对正常数据的“通用效用保护”能力，**该值越高、越接近原模型越好**。
     * **Forget Acc (遗忘集准确率)**: 评估算法的“遗忘有效性”，**该值越低越好**（说明模型成功剥离了记忆）。
     * **MIA 成功率**: 评估模型的隐私防御能力（成员推理攻击），**该值越接近 50% 越好**（等效于 AUC 值，说明攻击者只能盲猜）。
@@ -121,7 +121,7 @@ def load_model(arch_name, num_classes=10, weights_path=None):
             from tiny_vit import _create_tiny_vit
         except Exception as e:
             st.error("❌ 导入模型文件失败！")
-            st.error(f"🔍 真正的底层报错原因是: {e}")
+            st.error(f"真正的底层报错原因是: {e}")
             st.stop()
 
         # 手动写死 11M 版本的专属架构参数，并根据 CIFAR 修改 img_size=32
@@ -173,7 +173,7 @@ def load_model(arch_name, num_classes=10, weights_path=None):
 
         except Exception as e:
             st.error(f"加载模型权重失败: {e}")
-            st.error(f"💡 调试提示: 您上传的文件里实际包含的键名大概长这样 -> {list(state_dict.keys())[:5]}")
+            st.error(f"调试提示: 您上传的文件里实际包含的键名大概长这样 -> {list(state_dict.keys())[:5]}")
             st.stop()
 
     return model
@@ -237,10 +237,10 @@ def evaluate_mia(model, retain_loader, forget_loader, test_loader, device):
 # ---------------------------------------------------------
 # 2. 左侧边栏：参数配置面板
 # ---------------------------------------------------------
-st.sidebar.header("⚙️ 参数配置")
+st.sidebar.header("参数配置")
 dataset_name = st.sidebar.selectbox("数据集", ["CIFAR-10", "CIFAR-100"])
 
-st.sidebar.subheader("📁 模型加载")
+st.sidebar.subheader("模型加载")
 # === 【更新】：去掉了 VGG-16，加入了 TinyViT-11M ===
 model_name = st.sidebar.selectbox("模型架构", ["ResNet-18", "TinyViT-11M"])
 uploaded_model_file = st.sidebar.file_uploader("上传纯正的预训练模型 (.pth)", type=["pth", "pt"])
@@ -255,7 +255,7 @@ algo_map = {
 }
 algo_choice = st.sidebar.selectbox("遗忘算法", list(algo_map.keys()))
 
-st.sidebar.subheader("🎛️ 通用超参数")
+st.sidebar.subheader("通用超参数")
 random_seed = st.sidebar.number_input("随机种子 (Seed)", min_value=0, max_value=999999, value=42, step=1,
                                       help="固定种子以确保每次实验数据划分与模型初始化绝对一致")
 epochs = st.sidebar.slider("Epochs (迭代次数)", min_value=1, max_value=50, value=2)
@@ -275,7 +275,7 @@ else:
 # ---------------------------------------------------------
 # 3. 主界面：实验控制与执行逻辑
 # ---------------------------------------------------------
-if st.button("🚀 一键执行遗忘操作 (Run Evaluation)", use_container_width=True):
+if st.button("一键执行遗忘操作 (Run Evaluation)", use_container_width=True):
 
     if uploaded_model_file is None:
         st.warning("请先在左侧上传对应的预训练模型权重！")
@@ -356,15 +356,60 @@ if st.button("🚀 一键执行遗忘操作 (Run Evaluation)", use_container_wid
     # 4. 实验报告与数据可视化
     # ---------------------------------------------------------
     st.markdown("---")
-    st.header("📑 当前实验报告与分析")
+    st.header("当前实验报告与分析")
+
+    # ================= 新增：智能裁判引擎 =================
+    st.subheader("系统智能判定结果")
+
+    # 判定逻辑阈值设定
+    MIA_TARGET_LOW = 45.0
+    MIA_TARGET_HIGH = 55.0
+    RETAIN_DROP_TOLERANCE = -5.0  # 保留集最多允许掉 5%
+
+    status_box = st.empty()
+
+    if delta_retain < -10.0 or new_retain_acc < 50.0:
+        # 1. 灾难性崩溃 (模型被破坏)
+        status_box.error(
+            f"**❌ 判定结果：灾难性遗忘 (Catastrophic Forgetting)**\n\n"
+            f"**诊断分析**：保留集准确率大幅下降了 {abs(delta_retain):.2f}%！算法过度破坏了底层特征空间，"
+            f"虽然可能达成了遗忘，但模型已经丧失了基础任务能力，该方案在工业界**不可用**。"
+        )
+    elif new_mia > MIA_TARGET_HIGH:
+        # 2. 遗忘不彻底 (隐私泄露风险大)
+        status_box.warning(
+            f"**⚠️ 判定结果：遗忘不彻底 (Incomplete Unlearning)**\n\n"
+            f"**诊断分析**：MIA 攻击成功率高达 {new_mia:.2f}%！尽管保留集效用完好，"
+            f"但深层网络依然残留着遗忘集的‘暗知识’，容易被黑客提取出隐私数据。"
+        )
+    elif new_mia < MIA_TARGET_LOW:
+        # 3. 过度遗忘 (产生统计学黑洞)
+        status_box.warning(
+            f"**⚠️ 判定结果：过度遗忘 (Over-Unlearning)**\n\n"
+            f"**诊断分析**：MIA 攻击成功率低至 {new_mia:.2f}%！这是一种反向隐私泄露。算法在此处留下了"
+            f"明显的‘清洗痕迹’（预测置信度异常低），攻击者一扫就能断定该数据曾被特殊处理过。"
+        )
+    else:
+        # 4. 帕累托最优 (完美状态)
+        status_box.success(
+            f"**✅ 判定结果：完美遗忘 (Ideal Unlearning)**\n\n"
+            f"**诊断分析**：太棒了！MIA 成功率被精准压制在盲猜区间（{new_mia:.2f}%），"
+            f"同时保留集效用仅微弱波动（{delta_retain:.2f}%）。模型在达成物理级隐私剥离的同时，"
+            f"完美维持了正常业务能力！"
+        )
+    # ===================================================
 
     st.subheader("1. 核心指标概览")
     kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
     kpi1.metric("Retain Acc", f"{new_retain_acc:.2f}%", f"{delta_retain:.2f}%")
     kpi2.metric("Forget Acc", f"{new_forget_acc:.2f}%", f"{delta_forget:.2f}%", delta_color="inverse")
     kpi3.metric("Test Acc", f"{new_test_acc:.2f}%", f"{delta_test:.2f}%")
-    kpi4.metric("MIA 成功率", f"{new_mia:.2f}%", f"{delta_mia:.2f}%", delta_color="inverse",
-                help="越低说明防攻击能力越好，遗忘越彻底")
+
+    # 针对 MIA 指标变色提醒
+    mia_color = "normal" if MIA_TARGET_LOW <= new_mia <= MIA_TARGET_HIGH else "inverse"
+    kpi4.metric("MIA 成功率", f"{new_mia:.2f}%", f"{delta_mia:.2f}%", delta_color=mia_color,
+                help="45%~55%为最佳盲猜区间")
+
     kpi5.metric("L2 参数距离", f"{l2_dist:.4f}", "越小越好", delta_color="off")
     kpi6.metric("算法耗时", f"{time_cost:.1f}s", "秒")
 
@@ -419,7 +464,7 @@ if st.button("🚀 一键执行遗忘操作 (Run Evaluation)", use_container_wid
     st.dataframe(df_report, use_container_width=True)
     csv = df_report.to_csv(index=False).encode('utf-8-sig')
     timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    st.download_button(label="📥 一键下载完整实验报告 (CSV)", data=csv,
+    st.download_button(label="一键下载完整实验报告 (CSV)", data=csv,
                        file_name=f"Unlearning_Report_{algo_choice}_{timestamp_str}.csv", mime="text/csv",
                        use_container_width=True)
 
@@ -428,7 +473,7 @@ if st.button("🚀 一键执行遗忘操作 (Run Evaluation)", use_container_wid
 # ---------------------------------------------------------
 if len(st.session_state.history) > 0:
     st.markdown("---")
-    st.header("🏆 多次实验结果横向对比大屏 (高级可视化)")
+    st.header("多次实验结果横向对比大屏 (高级可视化)")
 
     history_df = pd.DataFrame(st.session_state.history)
     history_df["实验Run"] = history_df["遗忘算法"] + " (Ep:" + history_df["Epochs"].astype(str) + " Sd:" + history_df[
@@ -461,6 +506,6 @@ if len(st.session_state.history) > 0:
         fig_eff.update_yaxes(title_text="显存消耗 (MB) ⬇越小越好", secondary_y=True)
         st.plotly_chart(fig_eff, use_container_width=True)
 
-    if st.button("🧹 清空历史对比数据"):
+    if st.button("清空历史对比数据"):
         st.session_state.history = []
         st.rerun()
